@@ -1,0 +1,5 @@
+@ApiLaboratorija_HostAddress = http://localhost:5072
+
+GET {{ApiLaboratorija_HostAddress}}/api/health
+
+###
