@@ -19,10 +19,14 @@ using (var scope = app.Services.CreateScope())
 {
     try
     {
-        Console.WriteLine("Migrating database...");
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Database.Migrate();
-        Console.WriteLine("Migration complete. Database is up to date.");
+        var isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true";
+        if (!isDocker)
+        {
+            Console.WriteLine("Migrating database...");
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.Migrate();
+            Console.WriteLine("Migration complete. Database is up to date.");
+        }
     }
     catch (Exception ex)
     {
