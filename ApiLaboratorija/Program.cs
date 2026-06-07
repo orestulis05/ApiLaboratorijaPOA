@@ -87,4 +87,33 @@ api.MapDelete("/users/{id}", async (int id, AppDbContext db) =>
 });
 #endregion
 
+#region Files
+api.MapPost("/upload", async (IFormFile file, AppDbContext db) =>
+{
+    using var memoryStream = new MemoryStream();
+    await file.CopyToAsync(memoryStream);
+    
+    var uploadedFile = new UploadedFile
+    {
+        FileName = file.FileName,
+        ContentType = file.ContentType,
+        Content = memoryStream.ToArray()
+    };
+    
+    await db.UploadedFiles.AddAsync(uploadedFile);
+    await db.SaveChangesAsync();
+    return Results.Ok(uploadedFile);
+})
+.DisableAntiforgery();
+
+api.MapGet("/download/{id}", async (int id, AppDbContext db) =>
+{
+    var file = await db.UploadedFiles.FirstOrDefaultAsync(f => f.Id == id);
+    if (file is null)
+        return Results.NotFound();
+
+    return Results.File(file.Content, file.ContentType, file.FileName);
+});
+#endregion
+
 app.Run();
