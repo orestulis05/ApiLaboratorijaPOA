@@ -1,21 +1,39 @@
+using ApiLaboratorija.Data;
+using ApiLaboratorija.Data.Models;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+});
+
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        Console.WriteLine("Migrating database...");
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.Migrate();
+        Console.WriteLine("Migration complete. Database is up to date.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Migration failed: {ex}");
+        throw;
+    }
+}
 
 // for ui endpoint testin
 app.UseSwagger();
 app.UseSwaggerUI();
-
-// mock db table
-var users = new List<User>
-{
-    new (1, "Petras", 30),
-    new (2, "Juozas", 25),
-    new (3, "Orestas", 28)
-};
 
 var api = app.MapGroup("/api");
 
@@ -23,27 +41,29 @@ api.MapGet("/health", () => "All good and running.")
     .WithName("Health");
 
 #region Users
-api.MapGet("/users", () => users);
-api.MapGet("/users/{id}", (int id) =>
+api.MapGet("/users", async (AppDbContext db) => await db.Users.ToListAsync());
+api.MapGet("/users/{id}", async (int id, AppDbContext db) =>
 {
-    var user = users.FirstOrDefault(u => u.Id == id);
-    if (user is null)
-        return Results.NotFound();
-    
-    return Results.Ok(user);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
+    return user is null 
+        ? Results.NotFound() 
+        : Results.Ok(user);
 });
-api.MapPost("/users", (UserDto body) =>
+
+api.MapPost("/users", async (UserDto body, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(body.Name) || body.Age is null or < 0 or > 100)
         return Results.BadRequest();
+   
+    var user = new User(body.Name, body.Age.Value);
+    await db.Users.AddAsync(user);
     
-    var user = new User(users.Count + 1, body.Name, body.Age.Value);
-    users.Add(user);
+    await db.SaveChangesAsync();
     return Results.Ok(user);
 });
-api.MapPut("/users/{id}", (int id, UserDto body) =>
+api.MapPut("/users/{id}", async (int id, UserDto body, AppDbContext db) =>
 {
-    var user = users.FirstOrDefault(u => u.Id == id);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
     if (user is null)
         return Results.NotFound();
     
@@ -52,17 +72,19 @@ api.MapPut("/users/{id}", (int id, UserDto body) =>
     if (body.Age is > 0 and < 100)
         user.Age = body.Age.Value;
     
+    await db.SaveChangesAsync();
     return Results.Ok(user);
 });
-api.MapDelete("/users/{id}", (int id) => users.RemoveAll(u => u.Id == id));
+api.MapDelete("/users/{id}", async (int id, AppDbContext db) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
+    if (user is null)
+        return Results.NotFound();
+    
+    db.Users.Remove(user);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
 #endregion
 
 app.Run();
-
-class User(int id, string name, int age)
-{
-    public int Id { get; } = id;
-    public string Name { get; set; } = name;
-    public int Age { get; set; } = age;
-}
-record UserDto(string? Name, int? Age);
