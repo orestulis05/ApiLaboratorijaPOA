@@ -40,6 +40,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 var api = app.MapGroup("/api");
+var client = new HttpClient();
 
 api.MapGet("/health", () => "All good and running.")
     .WithName("Health");
@@ -120,4 +121,24 @@ api.MapGet("/download/{id}", async (int id, AppDbContext db) =>
 });
 #endregion
 
+#region ExternalAPI
+api.MapGet("joke", async () =>
+{
+    var response = await client.GetAsync("https://official-joke-api.appspot.com/random_joke");
+    var joke = await response.Content.ReadFromJsonAsync<JokeResponse>();
+    
+    if (joke is null)
+        return Results.NotFound();
+
+    return Results.Ok(joke);
+});
+#endregion
+
 app.Run();
+
+class JokeResponse
+{
+    public string Type { get; set; } = "";
+    public string Setup { get; set; } = "";
+    public string Punchline { get; set; } = "";
+}
